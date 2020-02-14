@@ -6,7 +6,12 @@ import (
 	"flag"
 	"os"
 	"fmt"
+	"io/ioutil"
+	"encoding/json"
+	"math"
+	"time"
 	"strings"
+	"path/filepath"
 )
 
 type CsvLine struct {
@@ -17,23 +22,76 @@ type CsvLine struct {
 	Type string
 }
 
+
+type Config struct {
+	Potencia              float64 `json:"Potencia"`
+	ImpuestosElectricidad float64 `json:"ImpuestosElectricidad"`
+	IVA                   float64 `json:"IVA"`
+	Contador              float64 `json:"Contador"`
+	Precios               []struct {
+		Nombre           string  `json:"Nombre"`
+		PrecioPotencia   float64 `json:"PrecioPotencia"`
+		PrecioPunta      float64 `json:"PrecioPunta"`
+		PrecioValle      float64 `json:"PrecioValle"`
+		PrecioSuperValle float64 `json:"PrecioSuperValle"`
+		MargenCommercial float64 `json:"MargenCommercial"`
+	} `json:"Precios"`
+}
+
 func main() {
 
-	csv := flag.String("csv", "consumo.csv", "El archivo csv de i-de")
+	csv := flag.String("csv", "./csv/", "Path to csv files")
+	configFile := flag.String("config", "./config.json", "Configuration file")
 	flag.Parse()
 
-    lines, err := ReadCsv(*csv)
+	config := LoadConfig(*configFile)
+
+	filepath.Walk(*csv, func(path string, info os.FileInfo, err error) error {
+
+		if !info.IsDir(){
+        	ProcessCSV(config, path)
+		}		
+        return nil
+    })
+	
+}
+
+func LoadConfig(path string) *Config {
+
+	jsonFile, err := os.Open(path)
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer jsonFile.Close()
+
+	content, _ := ioutil.ReadAll(jsonFile)
+	var config Config
+	json.Unmarshal(content, &config)
+
+	return &config
+}
+
+func ProcessCSV(config *Config, csv string) {
+
+	lines, err := ReadCsv(csv)
     if err != nil {
         panic(err)
 	}
 	
 	totalHourly := make([]float64, 25)
 
+	dateStart := ""
+	dateEnd := ""
+
     // Loop through lines & turn into object
     for _, line := range lines {
 		
-		h, _ := strconv.Atoi(line[2])
-		f, _ := strconv.ParseFloat(strings.ReplaceAll(line[3], ",", "."), 64)
+		h, err1 := strconv.Atoi(line[2])
+		f, err2 := strconv.ParseFloat(strings.ReplaceAll(line[3], ",", "."), 64)
+
+		if err1 != nil || err2 != nil {
+			continue
+		}
 
         data := CsvLine{
             Cups: line[0],
@@ -42,16 +100,22 @@ func main() {
 			KWH: f,
 			Type: line[4],
 		}
+
 		if data.Hour < 25 { // Yeah, I know but had a csv with hour == 25 O_o
 			totalHourly[data.Hour] = totalHourly[data.Hour] + data.KWH
 		}		
+
+		if dateStart == "" {
+			dateStart = data.Date
+		}
+
+		dateEnd = data.Date
 	}
 
 	var total float64
 	var punta float64
 	var valle float64
 	var supervalle float64
-	var sum float64
 	
 	for i, v := range totalHourly{
 
@@ -72,23 +136,28 @@ func main() {
 		}
 
 		total = total + v
-
-		fmt.Println("Hour :", i-1, "->" ,i, "kWh :", v)
 	}
 
-	sum = punta + valle + supervalle
+	layout := "02/01/2006"
+	tStart, err := time.Parse(layout, dateStart)
+	tEnd, err := time.Parse(layout, dateEnd)
+	days := tEnd.Sub(tStart).Hours() / 24
 
 	fmt.Println("")
-	fmt.Println("-----------------------------------")
-	fmt.Println("Punta :", punta)
-	fmt.Println("Valle :", valle)
-	fmt.Println("Supervalle :", supervalle)
-	fmt.Println("-----------------------------------")
-	fmt.Println("Total :", total, "(" , sum , ")" )
+	fmt.Println("----------------------------------------------------------------------")
+	fmt.Println(dateStart, "->", dateEnd,":", math.Round(total*100)/100, "kWh en", days, "dias ")
+	fmt.Println("")	
+	fmt.Println("    - Punta :", math.Round(punta*100)/100, "kWh" )
+	fmt.Println("    - Valle :", math.Round(valle*100)/100, "kWh" )
+	fmt.Println("    - Supervalle :", math.Round(supervalle*100)/100, "kWh" )
+	fmt.Println("")
+
+	PrintPrices(config, punta, valle, supervalle, days)
+
+	fmt.Println("")
+	fmt.Println("")
 }
 
-// ReadCsv accepts a file and returns its content as a multi-dimentional type
-// with lines and each column. Only parses to string type.
 func ReadCsv(filename string) ([][]string, error) {
 
     // Open CSV file
@@ -107,4 +176,21 @@ func ReadCsv(filename string) ([][]string, error) {
     }
 
     return lines, nil
+}
+
+func PrintPrices(config *Config, punta, valle, supervalle, days float64){
+
+	for _, com := range config.Precios {
+
+		p_pot := config.Potencia * days * com.PrecioPotencia
+		p_energy := (com.PrecioPunta * punta) + (com.PrecioValle * valle) + (com.PrecioSuperValle * supervalle)
+		total := p_pot + p_energy + com.MargenCommercial
+		total = total + ( total * (config.ImpuestosElectricidad / 100 ))
+		total = total + config.Contador
+		total = total + ( total * (config.IVA / 100 ))
+
+		total = math.Round(total*100)/100
+
+		fmt.Println("    ", com.Nombre, ":" , total, "€")
+	}
 }

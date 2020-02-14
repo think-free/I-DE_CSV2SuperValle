@@ -1,0 +1,34 @@
+{
+    "Potencia" : 5.75,
+    "ImpuestosElectricidad" : 5.11269632,
+    "IVA" : 21.0,
+    "Contador" : 0.8,
+
+    "Precios" : [
+
+        {
+            "Nombre" : "Enerkia",
+            "PrecioPotencia" : 0.117913,
+            "PrecioPunta" : 0.15410140,
+            "PrecioValle" : 0.07719795,
+            "PrecioSuperValle" : 0.07719795,
+            "MargenCommercial" : 0.0
+        },
+        {
+            "Nombre" : "Enerkia Tesla",
+            "PrecioPotencia" : 0.117913,
+            "PrecioPunta" : 0.15410140,
+            "PrecioValle" : 0.07719795,
+            "PrecioSuperValle" : 0.0,
+            "MargenCommercial" : 0.0
+        },
+        {
+            "Nombre" : "Proxima Energia",
+            "PrecioPotencia" : 0.10423,
+            "PrecioPunta" : 0.13236400,
+            "PrecioValle" : 0.06917200,
+            "PrecioSuperValle" : 0.05845600,
+            "MargenCommercial" : 2.0
+        }
+    ]
+}
